@@ -40,8 +40,34 @@ class Buffer(object):
     def global_pos(self, offset):
         return self.discarded + offset
 
+    def __len__(self):
+        return len(self.buf)
 
-def get_tokens(buffer):
+    def __add__(self, new_buf):
+        if not self.search():
+            # nothing left in this buffer, we take the new buffer, noting offset
+            new_buf.discarded = self.discarded + len(self.buf)
+            return new_buf
+        else:
+            # TODO: do this more intelligently, dropping everything before pos
+            # we need to combine the two buffers
+            self.buf += new_buf.buf
+            return self
+
+
+def get_tokens(buffer, more_data=True):
+    """
+    This takes a buffer and returns an iterator on it, to returns complete
+    lexical tokens one at a time.  Iterator stops when there are no more
+    clear-cut lexical tokens. If the buffer ends where it could be the
+    middle of a token, or the end (ex. " 19"), it will return without that
+    token, waiting for more data to be present.  However, if this is really
+    the last available data chunk, set more_data=False, and it will be
+    more greedy about matching.
+
+    This is to ensure two chunks cut, such as " 19" and ".4" are properly
+    parsed as "19.4", not two distinct tokens "19" and ".4".
+    """
     while True:
         match = buffer.search()
         if match:
@@ -61,81 +87,65 @@ def get_tokens(buffer):
                             break
                     except ValueError:
                         return
-                        # TODO: we die here, need to start again with more data!!!
-                        # data = f.read(buf_size)
-                        # if not data:
-                        #     raise common.IncompleteJSONError('Incomplete string lexeme')
-                        # buf += data
                 yield buffer.global_pos(pos), buffer.buf[pos:end + 1]
                 buffer.pos = end + 1
             else:
-                # TODO: handle multiple chunks
-                # while match.end() == len(buf):
-                #     data = f.read(buf_size)
-                #     if not data:
-                #         break
-                #     buf += data
-                #     match = LEXEME_RE.search(buf, pos)
-                #     lexeme = match.group()
-                yield buffer.global_pos(match.start()), lexeme
+                if more_data and (match.end() == len(buffer)):
+                    return
                 buffer.pos = match.end()
+                yield buffer.global_pos(match.start()), lexeme
         else:
             return
-            # data = f.read(buf_size)
-            # if not data:
-            #     break
-            # discarded += len(buf)
-            # buf = data
-            # pos = 0
 
 
-def Lexer(f, buf_size=BUFSIZE):
-    if type(f.read(0)) == bytetype:
-        f = getreader('utf-8')(f)
-    buf = f.read(buf_size)
-    pos = 0
-    discarded = 0
-    while True:
-        match = LEXEME_RE.search(buf, pos)
-        if match:
-            lexeme = match.group()
-            if lexeme == '"':
-                pos = match.start()
-                start = pos + 1
-                while True:
-                    try:
-                        end = buf.index('"', start)
-                        escpos = end - 1
-                        while buf[escpos] == '\\':
-                            escpos -= 1
-                        if (end - escpos) % 2 == 0:
-                            start = end + 1
-                        else:
-                            break
-                    except ValueError:
-                        data = f.read(buf_size)
-                        if not data:
-                            raise common.IncompleteJSONError('Incomplete string lexeme')
-                        buf += data
-                yield discarded + pos, buf[pos:end + 1]
-                pos = end + 1
+class Lexer(object):
+    """
+    This takes a stream and can be used to iterator over lexical tokens from it.
+    Uses Buffer and get_token to do the work on the in-memory data, and handles
+    combining multiple data chunks from the network.
+    """
+
+    def __init__(self, stream, buf_size=BUFSIZE):
+        self.stream = stream
+        self.buf_size = buf_size
+        self.stream_done = False
+        self.buffer = None
+
+    def read_buffer(self):
+        data = self.stream.read(self.buf_size)
+        return Buffer(data)
+
+    def __iter__(self):
+        # __iter__ may be called multiple times on one object, just initialize once
+        if not self.buffer:
+            self.buffer = self.read_buffer()
+            self.parser = get_tokens(self.buffer)
+        return self
+
+    def next(self):
+        return self.__next__()
+
+    def __next__(self):
+        # if we hit the end of the parsing on the last call, then we must successfully finish
+        # or die with the error that the json doesn't close properly
+        if self.stream_done:
+            if self.buffer.search():
+                raise common.IncompleteJSONError('Incomplete string lexeme')
             else:
-                while match.end() == len(buf):
-                    data = f.read(buf_size)
-                    if not data:
-                        break
-                    buf += data
-                    match = LEXEME_RE.search(buf, pos)
-                    lexeme = match.group()
-                yield discarded + match.start(), lexeme
-                pos = match.end()
-        else:
-            data = f.read(buf_size)
-            if not data:
-                break
-            discarded += len(buf)
-            buf = data
-            pos = 0
+                raise StopIteration()
+
+        try:
+            return next(self.parser)
+        except StopIteration:
+            # try to get more data
+            more_data = self.read_buffer()
+            if len(more_data) > 0:
+                self.buffer = self.buffer + more_data
+                self.parser = get_tokens(self.buffer)
+                return next(self)
+            else:
+                self.stream_done = True
+                return next(get_tokens(self.buffer, more_data=False))
 
 
 def unescape(s):

@@ -15,7 +15,7 @@ TOKENS1 = [(0, u'{'), (1, u'"name"'), (7, u':'), (9, u'"string"'), (17, u','), (
 
 def test_lexer():
     buf = StringIO(DATA1)
-    lex = Lexer(buf)
+    lex = Lexer(buf, buf_size=10)
     tokens = list(lex)
     assert len(tokens) == len(TOKENS1)
     assert tokens == TOKENS1
@@ -23,8 +23,44 @@ def test_lexer():
 
 def test_get_tokens_all():
     buf = Buffer(DATA1)
-    parser = get_tokens(buf)
+    parser = get_tokens(buf, more_data=False)
     tokens = list(parser)
+    assert len(tokens) == len(TOKENS1)
+    assert tokens == TOKENS1
+
+
+# def test_buffer_add():
+#     pass
+
+def test_get_tokens_chunks_split_in_spaces():
+    chunk1 = DATA1[:30]
+    chunk2 = DATA1[30:]
+    validate_get_tokens_reentrant(Buffer(chunk1), Buffer(chunk2))
+
+
+def test_get_tokens_chunks_split_in_string():
+    chunk1 = DATA1[:35]
+    chunk2 = DATA1[35:]
+    validate_get_tokens_reentrant(Buffer(chunk1), Buffer(chunk2))
+
+
+def test_get_tokens_chunks_split_in_number():
+    chunk1 = DATA1[:42]
+    chunk2 = DATA1[42:]
+    validate_get_tokens_reentrant(Buffer(chunk1), Buffer(chunk2))
+
+
+def validate_get_tokens_reentrant(*buffers):
+    tokens = []
+    buffer = Buffer('')
+    for b in buffers:
+        buffer = buffer + b
+        tokens += list(get_tokens(buffer))
+    tokens += list(get_tokens(buffer, False))
+    unfinished = buffer.search()
+    assert not unfinished
+    if len(tokens) != len(TOKENS1):
+        import pdb; pdb.set_trace()
     assert len(tokens) == len(TOKENS1)
     assert tokens == TOKENS1
 
