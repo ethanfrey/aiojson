@@ -118,6 +118,8 @@ class Lexer(object):
     def __iter__(self):
         # __iter__ may be called multiple times on one object, just initialize once
         if not self.buffer:
+            if type(self.stream.read(0)) == bytetype:
+                self.stream = getreader('utf-8')(self.stream)
             self.buffer = self.read_buffer()
             self.parser = get_tokens(self.buffer)
         return self
@@ -197,7 +199,10 @@ def parse_value(lexer, symbol=None, pos=0):
             for event in parse_object(lexer):
                 yield event
         elif symbol[0] == '"':
-            yield ('string', unescape(symbol[1:-1]))
+            try:
+                yield ('string', unescape(symbol[1:-1]))
+            except Exception as e:
+                import pdb; pdb.set_trace()
         else:
             try:
                 yield ('number', common.number(symbol))
