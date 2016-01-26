@@ -7,13 +7,13 @@ from io import StringIO, BytesIO
 RAW_DATA = u'{"name": "string", "age": 42, "weight": 19.4, "list": [5, "b", 17, {"foo": "bar"}]}'
 
 RAW_TOKENS = [(0, u'{'), (1, u'"name"'), (7, u':'), (9, u'"string"'), (17, u','), (19, u'"age"'), (24, u':'), (26, u'42'),
-           (28, u','), (30, u'"weight"'), (38, u':'), (40, u'19.4'), (44, u','), (46, u'"list"'), (52, u':'),
-           (54, u'['), (55, u'5'), (56, u','), (58, u'"b"'), (61, u','), (63, u'17'), (65, u','),
-           (67, u'{'), (68, u'"foo"'), (73, u':'), (75, u'"bar"'), (80, u'}'), (81, u']'), (82, u'}')]
+              (28, u','), (30, u'"weight"'), (38, u':'), (40, u'19.4'), (44, u','), (46, u'"list"'), (52, u':'),
+              (54, u'['), (55, u'5'), (56, u','), (58, u'"b"'), (61, u','), (63, u'17'), (65, u','),
+              (67, u'{'), (68, u'"foo"'), (73, u':'), (75, u'"bar"'), (80, u'}'), (81, u']'), (82, u'}')]
 
 #      "string": "\\u0441\\u0442\\u0440\\u043e\\u043a\\u0430 - \xd1\x82\xd0\xb5\xd1\x81\xd1\x82"
-                # ('map_key', 'string'),
-                # ('string', 'строка - тест'),
+# ('map_key', 'string'),
+# ('string', 'строка - тест'),
 
 JSON = b'''
 {
@@ -149,4 +149,4 @@ def test_items():
     assert len(matches) == 3
     assert matches[0] == [[1], {}]
     assert matches[1] == {"key": "value"}
-    assert matches[2] == None
+    assert matches[2] is None
