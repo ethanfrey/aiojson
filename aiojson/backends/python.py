@@ -6,14 +6,10 @@ Pure-python parsing backend.
 import decimal
 import re
 
-# TODO: codecs???
-from codecs import getreader
-from ijson.compat import chr, bytetype
 from aiojson import common
 
 
 BUFSIZE = 16 * 1024
-LEXEME_RE = re.compile(r'[a-z0-9eE\.\+-]+|\S')
 
 
 class UnexpectedSymbol(common.JSONError):
@@ -112,19 +108,24 @@ class Lexer(object):
         self.buffer = None
 
     def read_buffer(self):
+        # TODO: this breaks if a utf-8 character is split in the middle of a chunk boundary
+        # Need a good asyncio solution here.
         data = self.stream.read(self.buf_size)
+        if isinstance(data, bytes):
+            data = data.decode('utf-8')
         return Buffer(data)
 
     def __iter__(self):
         # __iter__ may be called multiple times on one object, just initialize once
-        if not self.buffer:
-            if type(self.stream.read(0)) == bytetype:
-                self.stream = getreader('utf-8')(self.stream)
+        if self.buffer is None:
             self.buffer = self.read_buffer()
             self.parser = get_tokens(self.buffer)
         return self
 
     def next(self):
+        # Make sure we set up the iterator once if people are calling by hand
+        if self.buffer is None:
+            self.__iter__()
         return self.__next__()
 
     def __next__(self):
@@ -135,7 +136,6 @@ class Lexer(object):
                 raise common.IncompleteJSONError('Incomplete string lexeme')
             else:
                 raise StopIteration()
-
         try:
             return next(self.parser)
         except StopIteration:

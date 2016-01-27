@@ -11,10 +11,6 @@ RAW_TOKENS = [(0, u'{'), (1, u'"name"'), (7, u':'), (9, u'"string"'), (17, u',')
               (54, u'['), (55, u'5'), (56, u','), (58, u'"b"'), (61, u','), (63, u'17'), (65, u','),
               (67, u'{'), (68, u'"foo"'), (73, u':'), (75, u'"bar"'), (80, u'}'), (81, u']'), (82, u'}')]
 
-#      "string": "\\u0441\\u0442\\u0440\\u043e\\u043a\\u0430 - \xd1\x82\xd0\xb5\xd1\x81\xd1\x82"
-# ('map_key', 'string'),
-# ('string', 'строка - тест'),
-
 JSON = b'''
 {
   "docs": [
@@ -25,7 +21,8 @@ JSON = b'''
       "integer": 0,
       "double": 0.5,
       "exponent": 1.0e+2,
-      "long": 10000000000
+      "long": 10000000000,
+      "string": "\\u0441\\u0442\\u0440\\u043e\\u043a\\u0430 - \xd1\x82\xd0\xb5\xd1\x81\xd1\x82"
     },
     {
       "meta": [[1], {}]
@@ -58,6 +55,8 @@ JSON_EVENTS = [
                 ('number', 100),
                 ('map_key', 'long'),
                 ('number', 10000000000),
+                ('map_key', 'string'),
+                ('string', 'строка - тест'),
             ('end_map', None),
             ('start_map', None),
                 ('map_key', 'meta'),
