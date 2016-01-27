@@ -9,7 +9,16 @@ RAW_TOKENS = [(0, u'{'), (1, u'"name"'), (7, u':'), (9, u'"string"'), (17, u',')
               (54, u'['), (55, u'5'), (56, u','), (58, u'"b"'), (61, u','), (63, u'17'), (65, u','),
               (67, u'{'), (68, u'"foo"'), (73, u':'), (75, u'"bar"'), (80, u'}'), (81, u']'), (82, u'}')]
 
-JSON = b'''
+SIMPLE_JSON = '"hello" 45 true'
+
+SIMPLE_EVENTS = [('string', 'hello'), ('number', 45), ('boolean', True)]
+
+ARRAY_JSON = '[1, "is", false, 2]'
+
+ARRAY_EVENTS = [('start_array', None), ('number', 1), ('string', 'is'), ('boolean', False), ('number', 2), ('end_array', None)]
+
+
+MAP_JSON = b'''
 {
   "docs": [
     {
@@ -34,7 +43,7 @@ JSON = b'''
   ]
 }
 '''
-JSON_EVENTS = [
+MAP_EVENTS = [
     ('start_map', None),
         ('map_key', 'docs'),
         ('start_array', None),

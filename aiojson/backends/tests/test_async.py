@@ -1,10 +1,9 @@
 # -*- coding:utf-8 -*-
 import asyncio
-from io import StringIO, BytesIO
 
 from ..python import Lexer, basic_parse, items
 
-from .data import RAW_DATA, RAW_TOKENS, JSON, JSON_EVENTS
+from .data import *
 from .server import DemoServer
 
 
@@ -20,14 +19,15 @@ class with_reader:
             await func(stream)
 
     def __call__(self, func):
-        loop = asyncio.get_event_loop()
-        server = DemoServer(self.data)
-        server.start_server(loop)
-        try:
-            loop.run_until_complete(self.call_wrapped(func, server))
-        finally:
-            server.stop_server(loop)
-            loop.close()
+        def f():
+            loop = asyncio.get_event_loop()
+            server = DemoServer(self.data)
+            server.start_server(loop)
+            try:
+                loop.run_until_complete(self.call_wrapped(func, server))
+            finally:
+                server.stop_server(loop)
+        return f
 
 
 @with_reader(RAW_DATA)
@@ -40,14 +40,28 @@ async def test_lexer(stream):
     assert tokens == RAW_TOKENS
 
 
-# def test_basic_parse():
-#     """
-#     Make sure the basic json parsing works
-#     TODO: make this async
-#     TODO: handle unicode properly
-#     """
-#     events = list(basic_parse(BytesIO(JSON)))
-#     assert events == JSON_EVENTS
+@with_reader(SIMPLE_JSON)
+async def test_basic_parse_simple(stream):
+    """
+    Make sure the basic json parsing works, using async streams
+    """
+    events = []
+    async for evt in basic_parse(stream):
+        events.append(evt)
+    assert len(events) == len(SIMPLE_EVENTS)
+    assert events == SIMPLE_EVENTS
+
+
+@with_reader(ARRAY_JSON)
+async def test_basic_parse_array(stream):
+    """
+    Make sure the basic json parsing works, using async streams
+    """
+    events = []
+    async for evt in basic_parse(stream):
+        events.append(evt)
+    assert len(events) == len(ARRAY_EVENTS)
+    assert events == ARRAY_EVENTS
 
 
 # def test_items():

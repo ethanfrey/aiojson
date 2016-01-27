@@ -2,7 +2,6 @@
 '''
 Pure-python parsing backend.
 '''
-# import asyncio
 import decimal
 import re
 
@@ -121,20 +120,26 @@ class Lexer(object):
             self.parser = get_tokens(self.buffer)
         return self
 
-    def next(self):
+    async def next(self):
         # Make sure we set up the iterator once if people are calling by hand
-        if self.buffer is None:
-            self.__iter__()
-        return self.__next__()
+        try:
+            if self.buffer is None:
+                await self.__aiter__()
+            return await self.__anext__()
+        except StopIteration:
+            import pdb; pdb.set_trace()
+
+    def _check_end(self):
+        if self.buffer.search():
+            raise common.IncompleteJSONError('Incomplete string lexeme')
+        else:
+            raise StopAsyncIteration
 
     async def __anext__(self):
         # if we hit the end of the parsing on the last call, then we must successfully finish
         # or die with the error that the json doesn't close properly
         if self.stream_done:
-            if self.buffer.search():
-                raise common.IncompleteJSONError('Incomplete string lexeme')
-            else:
-                raise StopAsyncIteration
+            self._check_end()
         try:
             return next(self.parser)
         except StopIteration:
@@ -143,10 +148,13 @@ class Lexer(object):
             if len(more_data) > 0:
                 self.buffer = self.buffer + more_data
                 self.parser = get_tokens(self.buffer)
-                return await self.__anext__()
+                return await self.next()
             else:
                 self.stream_done = True
-                return next(get_tokens(self.buffer, more_data=False))
+                try:
+                    return next(get_tokens(self.buffer, more_data=False))
+                except StopIteration:
+                    self._check_end()
 
 
 def unescape(s):
@@ -181,50 +189,95 @@ def unescape(s):
     return result
 
 
-def parse_value(lexer, symbol=None, pos=0):
-    try:
-        if symbol is None:
-            pos, symbol = next(lexer)
-        if symbol == 'null':
-            yield ('null', None)
-        elif symbol == 'true':
-            yield ('boolean', True)
-        elif symbol == 'false':
-            yield ('boolean', False)
-        elif symbol == '[':
-            for event in parse_array(lexer):
-                yield event
-        elif symbol == '{':
-            for event in parse_object(lexer):
-                yield event
-        elif symbol[0] == '"':
-            yield ('string', unescape(symbol[1:-1]))
-        else:
-            try:
-                yield ('number', common.number(symbol))
-            except decimal.InvalidOperation:
-                raise UnexpectedSymbol(symbol, pos)
-    except StopIteration:
-        raise common.IncompleteJSONError('Incomplete JSON data')
+class parse_value:
+    def __init__(self, lexer, symbol=None, pos=0):
+        self.lexer = lexer
+        self.symbol = symbol
+        self.pos = pos
+        self.done = False
+        self.array_parser = None
+
+    async def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self.symbol:
+            self.pos, self.symbol = await self.lexer.next()
+
+        if self.done:
+            raise StopAsyncIteration
+        try:
+            if self.array_parser:
+                return await self.array_parser.next()
+            if self.symbol == 'null':
+                self.done = True
+                return ('null', None)
+            elif self.symbol == 'true':
+                self.done = True
+                return ('boolean', True)
+            elif self.symbol == 'false':
+                self.done = True
+                return ('boolean', False)
+            elif self.symbol == '[':
+                self.array_parser = parse_array(self.lexer)
+                return ('start_array', None)
+            elif self.symbol == '{':
+                # TODO
+                # for event in parse_object(lexer):
+                #     yield event
+                return ('start_map', None)
+            elif self.symbol[0] == '"':
+                self.done = True
+                return ('string', unescape(self.symbol[1:-1]))
+            else:
+                try:
+                    self.done = True
+                    return ('number', common.number(self.symbol))
+                except decimal.InvalidOperation:
+                    raise UnexpectedSymbol(self.symbol, self.pos)
+        except StopIteration:
+            raise common.IncompleteJSONError('Incomplete JSON data')
+
+    async def next(self):
+        # Make sure we set up the iterator once if people are calling by hand
+        return await self.__anext__()
 
 
-def parse_array(lexer):
-    yield ('start_array', None)
-    try:
-        pos, symbol = next(lexer)
-        if symbol != ']':
-            while True:
-                for event in parse_value(lexer, symbol, pos):
-                    yield event
-                pos, symbol = next(lexer)
+class parse_array:
+    def __init__(self, lexer):
+        self.lexer = lexer
+        self.done = False
+        self.in_array = False
+
+    async def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            if self.done:
+                raise StopAsyncIteration
+            pos, symbol = await self.lexer.next()
+            print('A', pos, symbol)
+            # if we are in the array, next must be , or ]
+            if self.in_array:
                 if symbol == ']':
-                    break
-                if symbol != ',':
+                    self.done = True
+                    return ('end_array', None)
+                elif symbol != ',':
                     raise UnexpectedSymbol(symbol, pos)
-                pos, symbol = next(lexer)
-        yield ('end_array', None)
-    except StopIteration:
-        raise common.IncompleteJSONError('Incomplete JSON data')
+                pos, symbol = await self.lexer.next()
+            # now we expect a "normal" value
+            self.in_array = True
+            print('B', pos, symbol)
+            # TODO: doesn't handle embedded arrays
+            event = await parse_value(self.lexer, symbol, pos).next()
+            return event
+        except StopIteration:
+            raise common.IncompleteJSONError('Incomplete JSON data')
+
+    async def next(self):
+        # Make sure we set up the iterator once if people are calling by hand
+        return await self.__anext__()
 
 
 def parse_object(lexer):
@@ -252,23 +305,40 @@ def parse_object(lexer):
         raise common.IncompleteJSONError('Incomplete JSON data')
 
 
-def basic_parse(file, buf_size=BUFSIZE):
+class basic_parse:
     '''
     Iterator yielding unprefixed events.
 
     Parameters:
 
-    - file: a readable file-like object with JSON input
+    - stream: an asyncio stream with JSON input
     '''
-    lexer = iter(Lexer(file, buf_size))
-    for value in parse_value(lexer):
-        yield value
-    try:
-        next(lexer)
-    except StopIteration:
-        pass
-    else:
-        raise common.JSONError('Additional data')
+    def __init__(self, stream, buf_size=BUFSIZE):
+        self.stream = stream
+        self.buf_size = buf_size
+        self.lexer = None
+        self.parser = None
+
+    async def __aiter__(self):
+        if self.lexer is None:
+            self.lexer = await Lexer(self.stream, self.buf_size).__aiter__()
+            self.parser = parse_value(self.lexer)
+        return self
+
+    async def __anext__(self):
+        try:
+            return await self.parser.next()
+        except StopAsyncIteration:
+            # go to the next value
+            self.parser = parse_value(self.lexer)
+            # if next also fails, then we are at the end...
+            return await self.parser.next()
+
+    async def next(self):
+        # Make sure we set up the iterator once if people are calling by hand
+        if self.lexer is None:
+            await self.__aiter__()
+        return await self.__anext__()
 
 
 def parse(file, buf_size=BUFSIZE):
