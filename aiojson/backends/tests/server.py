@@ -41,13 +41,29 @@ class DemoServer:
         return aiohttp.get(self.url)
 
 
-if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    server = DemoServer(b'M\xc3\xa4dchen mit Bi\xc3\x9f\n')
-    server.start_server(loop)
-    try:
-        task = asyncio.ensure_future(get_data(server))
-        loop.run_until_complete(task)
-    finally:
-        server.stop_server(loop)
-        loop.close()
+class with_reader:
+    """
+    Use as a decorator over an async function.
+    The function will get one argument - a StreamReader with the data passed in the constructor.
+    It will also be wrapped to call it synchronously, so it can be used in tests easily.
+    """
+    def __init__(self, data):
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        self.data = data
+
+    async def call_wrapped(self, func, server):
+        async with server.get_response() as r:
+            stream = r.content
+            await func(stream)
+
+    def __call__(self, func):
+        def f():
+            loop = asyncio.get_event_loop()
+            server = DemoServer(self.data)
+            server.start_server(loop)
+            try:
+                loop.run_until_complete(self.call_wrapped(func, server))
+            finally:
+                server.stop_server(loop)
+        return f

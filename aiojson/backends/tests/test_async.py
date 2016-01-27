@@ -4,30 +4,7 @@ import asyncio
 from ..python import Lexer, basic_parse, items
 
 from .data import *
-from .server import DemoServer
-
-
-class with_reader:
-    def __init__(self, data):
-        if isinstance(data, str):
-            data = data.encode('utf-8')
-        self.data = data
-
-    async def call_wrapped(self, func, server):
-        async with server.get_response() as r:
-            stream = r.content
-            await func(stream)
-
-    def __call__(self, func):
-        def f():
-            loop = asyncio.get_event_loop()
-            server = DemoServer(self.data)
-            server.start_server(loop)
-            try:
-                loop.run_until_complete(self.call_wrapped(func, server))
-            finally:
-                server.stop_server(loop)
-        return f
+from .server import with_reader
 
 
 @with_reader(RAW_DATA)
