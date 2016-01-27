@@ -6,8 +6,7 @@ Pure-python parsing backend.
 import decimal
 import re
 
-from aiojson import common
-
+from .. import common
 
 BUFSIZE = 16 * 1024
 
@@ -107,18 +106,18 @@ class Lexer(object):
         self.stream_done = False
         self.buffer = None
 
-    def read_buffer(self):
+    async def read_buffer(self):
         # TODO: this breaks if a utf-8 character is split in the middle of a chunk boundary
         # Need a good asyncio solution here.
-        data = self.stream.read(self.buf_size)
-        if isinstance(data, bytes):
+        data = await self.stream.read(self.buf_size)
+        if isinstance(data, (bytes, bytearray)):
             data = data.decode('utf-8')
         return Buffer(data)
 
-    def __iter__(self):
+    async def __aiter__(self):
         # __iter__ may be called multiple times on one object, just initialize once
         if self.buffer is None:
-            self.buffer = self.read_buffer()
+            self.buffer = await self.read_buffer()
             self.parser = get_tokens(self.buffer)
         return self
 
@@ -128,23 +127,23 @@ class Lexer(object):
             self.__iter__()
         return self.__next__()
 
-    def __next__(self):
+    async def __anext__(self):
         # if we hit the end of the parsing on the last call, then we must successfully finish
         # or die with the error that the json doesn't close properly
         if self.stream_done:
             if self.buffer.search():
                 raise common.IncompleteJSONError('Incomplete string lexeme')
             else:
-                raise StopIteration()
+                raise StopAsyncIteration
         try:
             return next(self.parser)
         except StopIteration:
             # try to get more data
-            more_data = self.read_buffer()
+            more_data = await self.read_buffer()
             if len(more_data) > 0:
                 self.buffer = self.buffer + more_data
                 self.parser = get_tokens(self.buffer)
-                return next(self)
+                return await self.__anext__()
             else:
                 self.stream_done = True
                 return next(get_tokens(self.buffer, more_data=False))
@@ -199,10 +198,7 @@ def parse_value(lexer, symbol=None, pos=0):
             for event in parse_object(lexer):
                 yield event
         elif symbol[0] == '"':
-            try:
-                yield ('string', unescape(symbol[1:-1]))
-            except Exception as e:
-                import pdb; pdb.set_trace()
+            yield ('string', unescape(symbol[1:-1]))
         else:
             try:
                 yield ('number', common.number(symbol))
