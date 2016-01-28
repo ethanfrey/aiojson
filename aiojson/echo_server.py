@@ -4,15 +4,19 @@ Simple http server to create streams for asyncio tests
 import asyncio
 import aiohttp
 from aiohttp import web
+import codecs
+
+from utils.streamdecoder import DecodingStreamReader
 
 
 async def get_data(host, port):
     url = 'http://{}:{}/'.format(host, port)
+    decoder = codecs.getincrementaldecoder('utf-8')(errors='strict')
     async with aiohttp.get(url) as r:
-        stream = r.content
+        stream = DecodingStreamReader(r.content)
         while not stream.at_eof():
-            data = await stream.read(4)
-            print(data.decode('utf-8'))
+            data = await stream.read(7)
+            print(data, end='')
 
 
 class UTF8Server:
@@ -23,6 +27,7 @@ class UTF8Server:
 
     async def hello(self, request):
         return web.Response(body=b'M\xc3\xa4dchen mit Bi\xc3\x9f\n')
+        # return web.Response(body=b'\xc3\x84\xc3\xa4\xc3\xa4\xc3\xa4\xc3\xa4\xc3\xa4\xc3\xa4\xc3\xa4\xc3\xa4\xc3\xa4h!\n')
 
     def start_server(self, loop, host, port):
         setup = loop.create_server(self.handler, host, port)
