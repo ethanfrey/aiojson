@@ -6,6 +6,7 @@ import decimal
 import re
 
 from .. import common
+from ..utils.aiogen import aiogen
 
 BUFSIZE = 16 * 1024
 
@@ -195,7 +196,7 @@ class parse_value:
         self.symbol = symbol
         self.pos = pos
         self.done = False
-        self.array_parser = None
+        self.sub_parser = None
 
     async def __aiter__(self):
         return self
@@ -207,8 +208,8 @@ class parse_value:
         if self.done:
             raise StopAsyncIteration
         try:
-            if self.array_parser:
-                return await self.array_parser.next()
+            if self.sub_parser:
+                return await self.sub_parser.next()
             if self.symbol == 'null':
                 self.done = True
                 return ('null', None)
@@ -219,12 +220,10 @@ class parse_value:
                 self.done = True
                 return ('boolean', False)
             elif self.symbol == '[':
-                self.array_parser = parse_array(self.lexer)
+                self.sub_parser = parse_array(self.lexer)
                 return ('start_array', None)
             elif self.symbol == '{':
-                # TODO
-                # for event in parse_object(lexer):
-                #     yield event
+                self.sub_parser = parse_object(self.lexer)
                 return ('start_map', None)
             elif self.symbol[0] == '"':
                 self.done = True
@@ -280,28 +279,28 @@ class parse_array:
         return await self.__anext__()
 
 
-def parse_object(lexer):
-    yield ('start_map', None)
+@aiogen
+async def parse_object(send, lexer):
     try:
-        pos, symbol = next(lexer)
+        pos, symbol = await lexer.next()
         if symbol != '}':
             while True:
                 if symbol[0] != '"':
                     raise UnexpectedSymbol(symbol, pos)
-                yield ('map_key', unescape(symbol[1:-1]))
-                pos, symbol = next(lexer)
+                await send(('map_key', unescape(symbol[1:-1])))
+                pos, symbol = await lexer.next()
                 if symbol != ':':
                     raise UnexpectedSymbol(symbol, pos)
-                for event in parse_value(lexer, None, pos):
-                    yield event
-                pos, symbol = next(lexer)
+                async for event in parse_value(lexer, None, pos):
+                    await send(event)
+                pos, symbol = await lexer.next()
                 if symbol == '}':
                     break
                 if symbol != ',':
                     raise UnexpectedSymbol(symbol, pos)
-                pos, symbol = next(lexer)
-        yield ('end_map', None)
-    except StopIteration:
+                pos, symbol = await lexer.next()
+        await send(('end_map', None))
+    except StopAsyncIteration:
         raise common.IncompleteJSONError('Incomplete JSON data')
 
 
@@ -327,7 +326,9 @@ class basic_parse:
 
     async def __anext__(self):
         try:
-            return await self.parser.next()
+            value = await self.parser.next()
+            print(value)
+            return value
         except StopAsyncIteration:
             # go to the next value
             self.parser = parse_value(self.lexer)

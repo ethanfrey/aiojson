@@ -17,6 +17,9 @@ ARRAY_JSON = '[1, "is", false, 2]'
 
 ARRAY_EVENTS = [('start_array', None), ('number', 1), ('string', 'is'), ('boolean', False), ('number', 2), ('end_array', None)]
 
+SIMPLE_MAP_JSON = '{"foo": "bar", "age": 17}'
+
+SIMPLE_MAP_EVENTS = [('start_map', None), ('map_key', 'foo'), ('string', 'bar'), ('map_key', 'age'), ('number', 17), ('end_map', None)]
 
 MAP_JSON = b'''
 {

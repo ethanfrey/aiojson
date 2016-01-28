@@ -36,7 +36,7 @@ class agenerator:
 
     async def __aiter__(self):
         # make it re-entrant
-        if self.output:
+        if self.output is not None:
             return
         self.output = Channel()
         self.task = asyncio.ensure_future(self.run_func())
@@ -50,7 +50,7 @@ class agenerator:
             raise StopAsyncIteration()
 
     async def next(self):
-        if not self.output:
-            self.__aiter__()
+        if self.output is None:
+            await self.__aiter__()
         return await self.__anext__()
 

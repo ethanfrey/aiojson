@@ -41,6 +41,29 @@ async def test_basic_parse_array(stream):
     assert events == ARRAY_EVENTS
 
 
+@with_reader(SIMPLE_MAP_JSON)
+async def test_basic_parse_simple_map(stream):
+    """
+    Make sure the basic json parsing works, using async streams
+    """
+    events = []
+    async for evt in basic_parse(stream):
+        events.append(evt)
+    assert len(events) == len(SIMPLE_MAP_EVENTS)
+    assert events == SIMPLE_MAP_EVENTS
+
+
+# @with_reader(MAP_JSON)
+# async def test_basic_parse_map(stream):
+#     """
+#     Make sure the basic json parsing works, using async streams
+#     """
+#     events = []
+#     async for evt in basic_parse(stream):
+#         events.append(evt)
+#     assert len(events) == len(MAP_EVENTS)
+#     assert events == MAP_EVENTS
+
 # def test_items():
 #     """Let's make sure the whole items feed still works"""
 #     feed = items(BytesIO(JSON), "docs.item.meta")
