@@ -45,7 +45,7 @@ class agenerator:
             await self.output.put(e)
 
     async def __aiter__(self):
-        # make it re-entrant
+        # make it idempotent
         if self.output is not None:
             return
         self.output = Channel()

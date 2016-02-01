@@ -323,19 +323,15 @@ class basic_parse:
         return await self.__anext__()
 
 
-@aiogen
-async def parse(send, stream, buf_size=BUFSIZE):
+def parse(stream, buf_size=BUFSIZE):
     '''
     Backend-specific wrapper for ijson.common.parse.
     '''
-    async for evt in common.parse(basic_parse(stream, buf_size=buf_size)):
-        await send(evt)
+    return common.parse(basic_parse(stream, buf_size=buf_size))
 
 
-@aiogen
-async def items(send, stream, prefix):
+def items(stream, prefix):
     '''
     Backend-specific wrapper for ijson.common.items.
     '''
-    async for obj in common.items(parse(stream), prefix):
-        await send(obj)
+    return common.items(parse(stream), prefix)
