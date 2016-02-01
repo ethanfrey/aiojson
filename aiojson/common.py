@@ -20,8 +20,7 @@ class IncompleteJSONError(JSONError):
     pass
 
 
-@aiogen
-async def parse(send, basic_events):
+class parse:
     '''
     An iterator returning parsing events with the information about their location
     with the JSON object tree. Events are tuples ``(prefix, type, value)``.
@@ -64,27 +63,38 @@ async def parse(send, basic_events):
       ('', 'end_map', None)
 
     '''
-    path = []
-    async for event, value in basic_events:
-        if event == 'map_key':
-            prefix = '.'.join(path[:-1])
-            path[-1] = value
-        elif event == 'start_map':
-            prefix = '.'.join(path)
-            path.append(None)
-        elif event == 'end_map':
-            path.pop()
-            prefix = '.'.join(path)
-        elif event == 'start_array':
-            prefix = '.'.join(path)
-            path.append('item')
-        elif event == 'end_array':
-            path.pop()
-            prefix = '.'.join(path)
-        else: # any scalar value
-            prefix = '.'.join(path)
 
-        await send(prefix, event, value)
+    def __init__(self, basic_events):
+        self.basic_events = basic_events
+        self.path = []
+
+    async def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        event, value = await self.basic_events.next()
+        if event == 'map_key':
+            prefix = '.'.join(self.path[:-1])
+            self.path[-1] = value
+        elif event == 'start_map':
+            prefix = '.'.join(self.path)
+            self.path.append(None)
+        elif event == 'end_map':
+            self.path.pop()
+            prefix = '.'.join(self.path)
+        elif event == 'start_array':
+            prefix = '.'.join(self.path)
+            self.path.append('item')
+        elif event == 'end_array':
+            self.path.pop()
+            prefix = '.'.join(self.path)
+        else: # any scalar value
+            prefix = '.'.join(self.path)
+
+        return (prefix, event, value)
+
+    async def next(self):
+        return await self.__anext__()
 
 
 class ObjectBuilder(object):
@@ -131,27 +141,36 @@ class ObjectBuilder(object):
             self.containers[-1](value)
 
 
-@aiogen
-async def items(send, prefixed_events, prefix):
+class items:
     '''
     An iterator returning native Python objects constructed from the events
     under a given prefix.
     '''
-    try:
-        while True:
-            current, event, value = await prefixed_events.next()
-            if current == prefix:
-                if event in ('start_map', 'start_array'):
-                    builder = ObjectBuilder()
-                    end_event = event.replace('start', 'end')
-                    while (current, event) != (prefix, end_event):
-                        builder.event(event, value)
-                        current, event, value = await prefixed_events.next()
-                    await send(builder.value)
-                else:
-                    await send(value)
-    except StopIteration:
-        pass
+    def __init__(self, prefixed_events, prefix):
+        self.prefixed_events = prefixed_events
+        self.prefix = prefix
+
+    async def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        current = None
+        # get events til we find one of interest
+        while (current != self.prefix):
+            current, event, value = await self.prefixed_events.next()
+        # now process it
+        if event in ('start_map', 'start_array'):
+            builder = ObjectBuilder()
+            end_event = event.replace('start', 'end')
+            while (current, event) != (self.prefix, end_event):
+                builder.event(event, value)
+                current, event, value = await self.prefixed_events.next()
+            return builder.value
+        else:
+            return value
+
+    async def next(self):
+        return await self.__anext__()
 
 
 def number(str_value):

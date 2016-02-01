@@ -37,10 +37,8 @@ class agenerator:
 
     async def run_func(self):
         try:
-            print('about to call self.func')
             # result = await self.func(self._send, *self.args, **self.kwargs)
             result = await self.func(self._send, *self.args, **self.kwargs)
-            print('done, closing channel')
             await self.output.close()
         except Exception as e:
             print('passing exception')
@@ -52,7 +50,6 @@ class agenerator:
             return
         self.output = Channel()
         self.task = asyncio.ensure_future(self.run_func())
-        print('started task')
         return self
 
     async def __anext__(self):
