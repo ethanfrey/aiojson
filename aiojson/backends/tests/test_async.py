@@ -1,7 +1,7 @@
 # -*- coding:utf-8 -*-
 import asyncio
 
-from ..python import Lexer, basic_parse, items
+from ..python import Lexer, basic_parse, items, parse
 
 from .data import *
 from .server import with_reader
@@ -53,22 +53,40 @@ async def test_basic_parse_simple_map(stream):
     assert events == SIMPLE_MAP_EVENTS
 
 
-# @with_reader(MAP_JSON)
-# async def test_basic_parse_map(stream):
-#     """
-#     Make sure the basic json parsing works, using async streams
-#     """
-#     events = []
-#     async for evt in basic_parse(stream):
-#         events.append(evt)
-#     assert len(events) == len(MAP_EVENTS)
-#     assert events == MAP_EVENTS
+@with_reader(MAP_JSON)
+async def test_basic_parse_map(stream):
+    """
+    Make sure the basic json parsing works, using async streams
+    """
+    events = []
+    async for evt in basic_parse(stream):
+        events.append(evt)
+    assert len(events) == len(MAP_EVENTS)
+    assert events == MAP_EVENTS
 
-# def test_items():
-#     """Let's make sure the whole items feed still works"""
-#     feed = items(BytesIO(JSON), "docs.item.meta")
-#     matches = list(feed)
-#     assert len(matches) == 3
-#     assert matches[0] == [[1], {}]
-#     assert matches[1] == {"key": "value"}
-#     assert matches[2] is None
+
+@with_reader(MAP_JSON)
+async def test_parse_map(stream):
+    """
+    Make sure the basic json parsing works, using async streams
+    """
+    events = []
+    async for evt in parse(stream):
+        events.append(evt)
+    assert len(events) == len(MAP_PREFIXED_EVENTS)
+    assert events == MAP_PREFIXED_EVENTS
+
+
+@with_reader(MAP_JSON)
+async def test_items_map(stream):
+    """
+    Make sure the basic json parsing works, using async streams
+    """
+    matches = []
+    async for obj in items(stream, "docs.item.meta"):
+        matches.append(obj)
+    assert len(matches) == 3
+    assert matches[0] == [[1], {}]
+    assert matches[1] == {"key": "value"}
+    assert matches[2] is None
+

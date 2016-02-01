@@ -242,41 +242,23 @@ class parse_value:
         return await self.__anext__()
 
 
-class parse_array:
-    def __init__(self, lexer):
-        self.lexer = lexer
-        self.done = False
-        self.in_array = False
-
-    async def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        try:
-            if self.done:
-                raise StopAsyncIteration
-            pos, symbol = await self.lexer.next()
-            print('A', pos, symbol)
-            # if we are in the array, next must be , or ]
-            if self.in_array:
+@aiogen
+async def parse_array(send, lexer):
+    try:
+        pos, symbol = await lexer.next()
+        if symbol != ']':
+            while True:
+                async for event in parse_value(lexer, symbol, pos):
+                    await send(event)
+                pos, symbol = await lexer.next()
                 if symbol == ']':
-                    self.done = True
-                    return ('end_array', None)
-                elif symbol != ',':
+                    break
+                if symbol != ',':
                     raise UnexpectedSymbol(symbol, pos)
-                pos, symbol = await self.lexer.next()
-            # now we expect a "normal" value
-            self.in_array = True
-            print('B', pos, symbol)
-            # TODO: doesn't handle embedded arrays
-            event = await parse_value(self.lexer, symbol, pos).next()
-            return event
-        except StopIteration:
-            raise common.IncompleteJSONError('Incomplete JSON data')
-
-    async def next(self):
-        # Make sure we set up the iterator once if people are calling by hand
-        return await self.__anext__()
+                pos, symbol = await lexer.next()
+        await send('end_array', None)
+    except StopIteration:
+        raise common.IncompleteJSONError('Incomplete JSON data')
 
 
 @aiogen
@@ -327,7 +309,6 @@ class basic_parse:
     async def __anext__(self):
         try:
             value = await self.parser.next()
-            print(value)
             return value
         except StopAsyncIteration:
             # go to the next value
@@ -342,15 +323,19 @@ class basic_parse:
         return await self.__anext__()
 
 
-def parse(file, buf_size=BUFSIZE):
+@aiogen
+async def parse(send, stream, buf_size=BUFSIZE):
     '''
     Backend-specific wrapper for ijson.common.parse.
     '''
-    return common.parse(basic_parse(file, buf_size=buf_size))
+    async for evt in common.parse(basic_parse(stream, buf_size=buf_size)):
+        await send(evt)
 
 
-def items(file, prefix):
+@aiogen
+async def items(send, stream, prefix):
     '''
     Backend-specific wrapper for ijson.common.items.
     '''
-    return common.items(parse(file), prefix)
+    async for obj in common.items(parse(stream), prefix):
+        await send(obj)

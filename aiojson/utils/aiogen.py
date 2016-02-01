@@ -24,10 +24,22 @@ class agenerator:
         self.kwargs = kwargs
         self.output = None
 
+    async def _send(self, *args):
+        if len(args) == 0:
+            raise Exception('Must send some data!')
+        elif len(args) == 1:
+            # just send the argument through
+            data = args[0]
+        else:
+            # you can send multiple arguments, and they are automatically wrapped into a tuple.
+            data = args
+        return await self.output.put(data)
+
     async def run_func(self):
         try:
             print('about to call self.func')
-            result = await self.func(self.output.put, *self.args, **self.kwargs)
+            # result = await self.func(self._send, *self.args, **self.kwargs)
+            result = await self.func(self._send, *self.args, **self.kwargs)
             print('done, closing channel')
             await self.output.close()
         except Exception as e:

@@ -3,6 +3,8 @@ Backend independent higher level interfaces, common exceptions.
 '''
 import decimal
 
+from .utils.aiogen import aiogen
+
 
 class JSONError(Exception):
     '''
@@ -18,7 +20,8 @@ class IncompleteJSONError(JSONError):
     pass
 
 
-def parse(basic_events):
+@aiogen
+async def parse(send, basic_events):
     '''
     An iterator returning parsing events with the information about their location
     with the JSON object tree. Events are tuples ``(prefix, type, value)``.
@@ -62,7 +65,7 @@ def parse(basic_events):
 
     '''
     path = []
-    for event, value in basic_events:
+    async for event, value in basic_events:
         if event == 'map_key':
             prefix = '.'.join(path[:-1])
             path[-1] = value
@@ -81,7 +84,7 @@ def parse(basic_events):
         else: # any scalar value
             prefix = '.'.join(path)
 
-        yield prefix, event, value
+        await send(prefix, event, value)
 
 
 class ObjectBuilder(object):
@@ -127,25 +130,26 @@ class ObjectBuilder(object):
         else:
             self.containers[-1](value)
 
-def items(prefixed_events, prefix):
+
+@aiogen
+async def items(send, prefixed_events, prefix):
     '''
     An iterator returning native Python objects constructed from the events
     under a given prefix.
     '''
-    prefixed_events = iter(prefixed_events)
     try:
         while True:
-            current, event, value = next(prefixed_events)
+            current, event, value = await prefixed_events.next()
             if current == prefix:
                 if event in ('start_map', 'start_array'):
                     builder = ObjectBuilder()
                     end_event = event.replace('start', 'end')
                     while (current, event) != (prefix, end_event):
                         builder.event(event, value)
-                        current, event, value = next(prefixed_events)
-                    yield builder.value
+                        current, event, value = await prefixed_events.next()
+                    await send(builder.value)
                 else:
-                    yield value
+                    await send(value)
     except StopIteration:
         pass
 
